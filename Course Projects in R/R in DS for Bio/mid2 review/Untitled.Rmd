@@ -1,0 +1,514 @@
+---
+title: "Mid2-reviw"
+author: "Zhuoya Wang"
+date: "2024-02-26"
+output:
+  word_document: default
+  pdf_document:
+    keep_tex: true
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("naniar")
+library("tidyverse")
+library("naniar")
+library("skimr")
+library("janitor")
+```
+
+# Lab 8 - NA's
+1. Define `NA` and describe how they are treated in R.  
+2. Produce summaries of the number of NA's in a data set.   
+3. Replace values with `NA` in a data set as appropriate.  
+```{r}
+life_history <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab8/data/mammal_lifehistories_v3.csv") %>% clean_names()
+```
+
+
+### Are there any NA's
+```{r}
+# Check NAs
+
+summary(life_history)# check if there are any wired values(eg. -999)
+
+life_history %>% map_df(~ sum(is.na(.))) #This will give you a quick summary of the number of NA's in each variable.
+```
+
+This will give you a quick summary of the number of NA’s in each variable. Notice that, at least for now, it doesn’t look like there are any NA’s. But, given the size of the data this is unlikely.
+
+### creating a new dataframe w/out NA
+```{r}
+
+life_history%>%
+  replace_with_na(replace = list(x= "-999", "-999.00", "NA", " ", ".", "not measured"))%>%
+  clean_names()
+life_history %>% map_df(~ sum(is.na(.))) # recheck
+
+# dataset%>%
+  # replace_with_na_all(condition = ~.x == -999) 
+# clean data like -999.0, -999.00, -999.000 .... 
+```
+
+## `miss_var_summary` provides a clean summary of NA's across the data frame.
+```{r}
+naniar::miss_var_summary(life_history) 
+# percent of missing and how many missing values
+
+life_history <- 
+  life_history %>% 
+  mutate(max_life=na_if(max_life, 0)) # replace 0 with NA in col called max_life
+
+miss_var_summary(life_history) #check again
+
+
+## We can also use `miss_var_summary` with `group_by()`. This helps us better evaluate where NA's are in the data.
+
+#life_history %>%
+#  group_by(order) %>%
+#  select(order, wean_mass) %>% 
+#  miss_var_summary(order=T)
+```
+
+If you are sure that you know how NA's are treated in the data, then you can deal with them in advance using `na()` as part of the `readr` package.
+```{r}
+#life_history_advance <- 
+#  readr::read_csv(file = "data/mammal_lifehistories_v3.csv", 
+#                  na = c("NA", " ", ".", "-999")) #all NA, blank spaces, .,and -999 are treated as NA
+```
+
+
+# Lab 9.1 Tidy data and `pivot_long()
+`Tidy` data follows three conventions:   
+(1) each variable has its own column  
+(2) each observation has its own row  
+(3) each value has its own cell  
+
+#### When the wide format creates a problem because column names may actually represent values of a variable. The command `pivot_longer()` shifts data from wide to long format. 
+
+### Rules:  
++ `pivot_longer`(cols, names_to, values_to)
++ `cols` - Columns to pivot to longer format
++ `names_to` - Name of the new column; it will contain the column names of gathered columns as values
++ `values_to` - Name of the new column; it will contain the data stored in the values of gathered columns
+```{r}
+library(tidyverse)
+heartrate <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab9/data/heartrate.csv")
+heartrate
+```
+
+```{r}
+heartrate%>% 
+  pivot_longer(-patient, #patient will not move
+               names_to = "drug", #make a new column called "drug"
+               values_to="heartrate" #values moved to a new column called heartrate
+               )
+```
+
+```{r}
+relig_income <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab9/data/relig_income.csv");relig_income
+
+```
+```{r}
+relig_income%>%
+  pivot_longer(-religion, 
+               names_to = "income range",
+               values_to = "total")
+```
+
+```{r}
+billboard <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab9/data/billboard.csv")
+billboard
+```
+
+Some (but not all) of the column names are data. We also have NA's.
+## Solution 1: specify a range of columns that you want to pivot.
+```{r}
+billboard2 <- 
+  billboard %>% 
+  pivot_longer(wk1:wk76, # a range of columns that need to be tidy
+               names_to = "week",
+               values_to = "rank", 
+               values_drop_na = TRUE #this will drop the NA's
+               )
+billboard2
+```
+
+## Solution 2: OR, specify columns that you want to stay fixed.
+```{r}
+billboard3 <- 
+  billboard %>% 
+  pivot_longer(-c(artist, track, date.entered), #specific columns to stay fixed
+               names_to = "week", # clean untidy
+               values_to = "rank",
+               values_drop_na = TRUE
+               )
+billboard3
+```
+
+## Solution 3: identify columns by a prefix, remove the prefix and all NA's.
+```{r}
+billboard4 <- billboard %>% 
+   pivot_longer(
+   cols = starts_with("wk"), #columns that start with "wk" that untidy
+   names_to = "week",
+   names_prefix = "wk",
+   values_to = "rank",
+   values_drop_na = TRUE); billboard4
+```
+
+## more than one variable in a cols --- splite the col into multiple
+```{r}
+qpcr_untidy <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab9/data/qpcr_untidy.csv");qpcr_untidy
+
+
+```
+
+```{r}
+#qpcr_untidy %>% 
+#  pivot_longer(
+#    exp1_rep1:exp3_rep3,
+#    names_to= c("experiment", "replicate"),# name two new variables
+#    names_sep="_", #pull apart 符号是链接两个部分的该符号。(separate variables name)
+#    values_to="mRNA_expression"
+#  )
+
+#heartrate3 <- heartrate2 %>% 
+#  separate(patient, into=c("patient", "sex"), sep="_") %>%  # separate obs names
+#  pivot_longer(-c(patient, sex),
+#               names_to = "drug",
+#               values_to = "heartrate") 
+
+#heartrate3 %>% 
+#  unite(patient_sex, "patient", "sex", sep=" ") # reunite the variables and obs ## unite(unitedvariables' name, var1, var2, sep = “链接obs的符号”)
+```
+
+
+# 9.2 Tidyr 2: `pivot_wider()
+You use `pivot_wider()` when you have an observation scattered across multiple rows.
+## Rules:  
++ `pivot_wider`(names_from, values_from)  
++ `names_from` - Values in the `names_from` column will become new column names  
++ `values_from` - Cell values will be taken from the `values_from` column  
+
+```{r}
+tb_data <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab9/data/tb_data.csv")
+tb_data
+```
+
+```{r}
+tb_data%>%
+  pivot_wider(names_from = "key", values_from = "value")
+```
+
+# 10.1 ggplot - part1: plot= data + geom_ + aesthetics.
+1. Understand and apply the syntax of building plots using `ggplot2`.  
+2. Build a boxplot using `ggplot2`.  
+3. Build a scatterplot using `ggplot2`.  
+4. Build a barplot using `ggplot2` and show the difference between `stat=count` and `stat=identity`.
+
+### boxplot and scartter plot
+```{r}
+library(tidyverse)
+library(naniar)
+library(janitor)
+
+### creating canvas for plot in first 2 lines
+ggplot(data=iris, #specify the data
+       mapping=aes(x=Species, y=Petal.Length))+ #map the aesthetics
+  geom_boxplot() #add the plot type
+
+## scartter plot
+homerange <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab10/data/Tamburelloetal_HomeRangeDatabase.csv")
+ggplot(data=homerange, #specify the data
+       mapping=aes(x=log10.mass, y=log10.hra))+ #map the aesthetics
+  geom_point(na.rm = T)+ #add the plot type
+  geom_smooth(method=lm, se=T) #add a regression line
+# method=lm, se=F, na.rm=F
+```
+
+### bar plot
+```{r}
+homerange %>% 
+  ggplot(aes(x=trophic.guild)) + 
+  geom_bar() #good for counts
+```
+
+```{r}
+homerange %>% 
+  filter(family=="salmonidae") %>%
+  select(common.name, log10.mass) %>% 
+  ggplot(aes(x=common.name, y=log10.mass))+ #notice the switch in x and y
+  geom_col()#+ # allow to specify the x and y axis
+  #coord_flip() # change coordination
+```
+
+## geom_bar() with stat="identity" stat="identity" allows us to map a variable to the y-axis so that we aren’t restricted to counts.
+```{r}
+homerange %>% 
+  filter(family=="salmonidae") %>% 
+  ggplot(aes(x=common.name))+
+  geom_bar()
+```
+
+```{r}
+homerange %>% 
+  filter(family=="salmonidae") %>% 
+  ggplot(aes(x=common.name, y=log10.mass))+ 
+  geom_bar(stat="identity") # allows to counting y grouped by common name
+```
+
+```{r}
+library(palmerpenguins)
+penguins %>% 
+  filter(sex != "NA")%>% # pull out NAs
+  group_by(sex)%>%
+  summarize(avg_bill_length = mean(bill_length_mm, na.rm = T))%>% 
+  ggplot(aes(x=sex, y = avg_bill_length))+
+  geom_col()
+```
+# 11.1 Data Visualization: `ggplot` part 2
+```{r}
+options(scipen=999)#cancels scientific notation for the session
+scale_y_log10() #zoom in plot
+
+#life_history%>%
+#  group_by(order)%>%
+#  summarize(mean_mass = mean(mass, na.rm = T))%>%
+#  ggplot(aes(x = reorder(order, mean_mass), y = mean_mass))+ # allow us to reorder order by mean_mass
+#  geom_col()+
+#  coord_flip()+
+#  scale_y_log10()
+```
+
+### adjust position of title 
+```{r}
+#labs(title="Elephant Age vs. Height", # add title
+#       x="Age(years)", 
+#       y="Height(cm")+
+#  theme(plot.title = element_text(size = rel(1.5), hjust = 0.5)) # remove the title to the middle and bigger, hjust is horizontal adjust
+```
+
+### fill:a common grouping option; show color based on different group in sex
+```{r}
+#elephants %>% 
+#  ggplot(aes(x=sex, fill=sex))+
+#  geom_bar()
+```
+
+### size: adjusts the size of points relative to a continuous variable.
+```{r}
+life_history %>% 
+  ggplot(aes(x=gestation, y=log10(mass), size=mass))+
+  geom_point(na.rm=T)
+```
+
+
+```{r}
+# geom_point(size=1.25)
+#### adjust point size
+
+
+# geom_point(aes(color=thermoregulation), size=1.5) 
+#### color the points by a categorical variable.
+
+
+# geom_point(aes(shape=thermoregulation, color=thermoregulation), size=1.5) ##### change shape& we use color here and not fill because we are not filling a shape
+```
+
+
+### counts & option2 also a stacked bar plot that shows the proportion
+```{r}
+#option 1
+homerange %>% count(taxon, sort=T)
+
+# option 2
+homerange %>% 
+  ggplot(aes(x = taxon, fill = trophic.guild)) + 
+  geom_bar() +
+  coord_flip() +
+  labs(title = "Observations by Taxon in Homerange Data",
+       x = "Taxonomic Group",
+       fill = "Trophic Guild") # legend tittle 
+```
+
+### geom_bar(position = "dodge") -->side-by-side bar plot for each taxon by specifying position="dodge"
+```{r}
+homerange %>% 
+  ggplot(aes(x = taxon, fill = trophic.guild)) + 
+  geom_bar(position = "dodge") +
+  coord_flip() +
+  labs(title = "Observations by Taxon in Homerange Data",
+       x = "Taxonomic Group",
+       fill = "Trophic Guild") # legend tittle 
+
+
+
+#theme(axis.text.x = element_text(angle = 60, hjust = 1)) + #angle is the angle of the text if taxon names are crowded for vertical plot
+```
+### percentage bar plot
+```{r}
+homerange %>% 
+  ggplot(aes(x = taxon, fill = trophic.guild))+
+  geom_bar(position = position_fill())+ 
+  scale_y_continuous(labels = scales::percent)+
+  coord_flip()
+```
+
+# 12.1 Data Visualization: `ggplot` part 3
+```{r}
+
+#library(tidyverse)
+#library(RColorBrewer)
+#library(paletteer)
+#library(janitor)
+#deserts <- read_csv("/Users/zhuoyawang/desktop/github/BIS15W2024_zywang/lab10/data/surveys_complete.csv")
+```
+
+## line plot: it is need to make year as.factor(year)
+```{r}
+#deserts%>%
+#  filter(species_id == "DM" | species_id == "DS")%>%
+#  mutate(year = as.factor(year))%>%
+#  group_by(year, species_id)%>%
+#  summarize(n = n(), .groups= "keep")%>% # make it more clean
+#  pivot_wider(names_from = species_id, values_from = n)
+
+```
+
+
+
+```{r}
+
+#gapminder%>%
+#  group_by(year, continent)%>%
+#  summarize(lc = mean(lifeExp, na.rm = T),.groups= "keep")%>%
+#  ggplot(aes(x = year, y = lc, color = continent))+
+#  geom_line()+
+#  labs(title = "Life Expectancy by Continent",
+#       x = "Year",
+#       y = "Average Life Expectancy")
+```
+
+
+### histogram; color ->boxline, fill ->inside box, bins-> box size
+```{r}
+homerange %>% 
+  ggplot(aes(x = log10.mass)) +
+  geom_histogram(color = "black", fill = "turquoise4", bins=10)+
+  labs(title = "Distribution of Body Mass")
+```
+### Density plot: geom_density; alpha -> transparency of plot.
+```{r}
+homerange %>% 
+  ggplot(aes(x = log10.mass)) +
+  geom_density(fill="deepskyblue4", alpha  =0.4, color = "black")+ #alpha is the transparency
+  labs(title = "Distribution of Body Mass")
+
+```
+
+```{r}
+homerange %>% 
+  ggplot(aes(x=log10.mass)) +
+  geom_histogram(aes(y = after_stat(density)), fill = "deepskyblue4", alpha = 0.4, color = "black")+
+  geom_density(color = "red")+ # density line
+  labs(title = "Distribution of Body Mass")
+```
+
+# 12.2 
+```{r}
+p <- homerange %>% 
+  ggplot(aes(x=taxon, fill=trophic.guild))+
+  geom_bar(na.rm=T, position="dodge");p
+```
+
+### linedraw : adding another layer
+```{r}
+p + theme_linedraw()+
+  theme(axis.text.x = element_text(angle = 60, hjust=1))+
+  labs(title = "Observations by Taxon in Homerange Data",
+       x = NULL,
+       y= "n",
+       fill= "Trophic Guild")
+```
+
+```{r}
+q <- homerange %>% 
+  ggplot(aes(x=log10.mass, y=log10.preymass, color=taxon))+
+  geom_point(na.rm=T);q
+```
+
+```{r}
+q + theme_classic()
+```
+
+## Faceting
+```{r}
+homerange %>% 
+  ggplot(aes(x=taxon, y=log10.mass))+
+  geom_boxplot()+
+  theme(axis.text.x = element_text(angle = 60, hjust=1))
+```
+
+## facet_wrap makes a ribbon of panels by a specified categorical variable
+```{r}
+homerange %>% 
+  ggplot(aes(x=taxon, y=log10.mass))+
+  geom_boxplot()+
+  facet_wrap(~trophic.guild, ncol=2)+
+  theme(axis.text.x = element_text(angle = 60, hjust=1))
+```
+
+## facet_grid: control over the faceted variable; it can be arranged in rows or columns.
+## rows~columns.
+```{r}
+homerange %>% 
+  ggplot(aes(x=taxon, y=log10.mass))+
+  geom_boxplot()+
+  facet_grid(trophic.guild~.)+ # in rows
+  theme(axis.text.x = element_text(angle = 60, hjust=1))
+```
+
+```{r}
+homerange %>% 
+  ggplot(aes(x=taxon, y=log10.mass))+
+  geom_boxplot()+
+  facet_grid(.~trophic.guild)+ # in col 
+  theme(axis.text.x = element_text(angle = 60, hjust=1))
+```
+
+```{r}
+homerange %>% 
+  ggplot(aes(x=taxon, y=log10.mass))+
+  geom_boxplot()+
+  facet_grid(trophic.guild~thermoregulation)+
+  theme(axis.text.x = element_text(angle = 60, hjust=1))
+```
+
+
+## HW11 review
+```{r}
+#top5 <- gapminder%>%
+#  filter(year %in% c(1952, 2007))%>%
+#  group_by(country)%>%
+#  summarize(start = first(pop),
+#            end = last(pop),
+#            pop_growth = (end-start))%>%
+#  arrange(desc(pop_growth))%>%
+#  top_n(5,pop_growth);top5
+```
+
+```{r}
+#gapminder%>%
+#  filter(year %in%c(1952, 2007) & country %in% top5$country)%>%
+#  ggplot(aes(x = reorder(country, pop), y = pop, fill = year))+
+#  geom_bar(stat = "identity", position = "dodge")+
+#  coord_flip()+
+#  labs(title = "Top 5 Population Growth Countries", x = "population", y = "country")
+```
+

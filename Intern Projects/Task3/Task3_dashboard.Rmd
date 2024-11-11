@@ -1,0 +1,341 @@
+---
+title: "Task3_dashboard"
+author: "Zhuoya Wang"
+date: "2024-08-03"
+output: pdf_document
+---
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(ggplot2)
+library(tidyverse)
+
+```
+
+
+
+
+```{r}
+
+HNP_SC<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsCountry.csv",encoding = 'UTF-8')
+HNP_SCS<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsCountry-Series.csv",encoding = 'UTF-8')
+HNP_SD<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsData.csv",encoding = 'UTF-8') %>% select(-X,-X2020)
+HNP_SFN<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsFootNote.csv",encoding = 'UTF-8')
+HNP_SS<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsSeries.csv",encoding = 'UTF-8')
+HNP_SST<-read.csv("~/Desktop/Intern/task3/hnp_stats_csv/HNP_StatsSeries-Time.csv",encoding = 'UTF-8')
+
+```
+
+
+
+```{r}
+HNP_SD<-na.omit(HNP_SD)
+summary(HNP_SD)
+
+data <- merge(HNP_SD, HNP_SC %>% select(Country.Code,Region), by = "Country.Code", all.x = TRUE)
+data<-data %>% filter(Indicator.Name=='Rural population' | Indicator.Name=='Urban population' | Indicator.Name=='Population, female'
+                      | Indicator.Name=='Population, male'| Indicator.Name=='Mortality rate, infant, female'| Indicator.Name=='Number of infant deaths'
+                      | Indicator.Name==' Mortality rate, infant, male'| Indicator.Name=='Age dependency ratio (% of working-age population)'
+                      | Indicator.Name=='Age dependency ratio, old'| Indicator.Name=='Age dependency ratio, young'| Indicator.Name=='Population ages 80 and above, female'
+                      | Indicator.Name=='Population ages 80 and above, male'
+                      | Indicator.Name=='Population, total')
+
+
+```
+
+
+```{r}
+datalong <- data %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = "Year",
+    values_to = "Value"
+  )
+
+datalong$Year <- str_sub(datalong$Year, start = 2)
+str(datalong)
+world<-datalong %>% filter(Country.Name=="World")
+
+datalong <- datalong %>% filter(Region!="")
+```
+
+
+```{r}
+regtotalpop<-na.omit(datalong %>% 
+                       filter(Indicator.Name=="Population, total") %>%
+                       group_by(Region,Year) %>% summarise(Value=sum(Value)))
+
+regtotalpop$Year<-as.numeric(regtotalpop$Year)
+
+oldpop<-na.omit(datalong %>%
+                  filter(Indicator.Name=="Age dependency ratio, old") %>% 
+                  group_by(Region,Year) %>% summarise(Value=round(mean(Value),2)))
+
+oldpop$Year<-as.numeric(oldpop$Year)
+
+urbanpop<-na.omit(datalong%>%
+                    filter(Indicator.Name=="Urban population") %>%
+                    group_by(Region,Year) %>% summarise(Value=sum(Value)))
+
+urbanpop$Year<-as.numeric(urbanpop$Year)
+```
+
+```{r}
+id<-na.omit(datalong %>% 
+              filter(Indicator.Name=="Number of infant deaths") %>% 
+              group_by(Region,Year) %>% summarise(Value=sum(Value)))
+id$Year<-as.numeric(id$Year)
+
+
+malepop<-na.omit(datalong %>% 
+                   filter(Indicator.Name=="Population, male") %>% 
+                   group_by(Region,Year) %>% summarise(Value=sum(Value)))
+malepop<-malepop %>% mutate(gender="Male")
+
+femalepop<-na.omit(datalong %>% 
+                     filter(Indicator.Name=="Population, female") %>% 
+                     group_by(Region,Year) %>% summarise(Value=sum(Value)))
+femalepop<-femalepop %>% mutate(gender="Female") 
+
+genderpop<-rbind(malepop,femalepop)  
+genderpop$Year<-as.numeric(genderpop$Year)
+
+
+table<-datalong
+table$Year<-as.numeric(table$Year)
+```
+
+
+###Shiny app
+
+```{r}
+ui <- dashboardPage(
+  dashboardHeader(title = "Population Dashboard"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Data Overview", tabName = "overview", icon = icon("table")),
+      menuItem("Data Filter", tabName = "filter", icon = icon("filter")),
+      menuItem("Total Population", tabName = "visualization", icon = icon("chart-line")),
+      menuItem("Age Dependency Ratio of Old", tabName = "old", icon = icon("chart-line")),
+      menuItem("Urban Population", tabName = "urban", icon = icon("chart-bar")),
+      menuItem("Infant Deaths", tabName = "id", icon = icon("chart-line")),
+      menuItem("Gender of Population", tabName = "gender", icon = icon("chart-pie"))
+    )
+  ),
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "overview",
+              h2("Data Overview"),
+              fluidRow(
+                valueBoxOutput("meanValueBox"),
+                valueBoxOutput("maxValueBox"),
+                valueBoxOutput("minValueBox")
+              ),
+              DT::dataTableOutput("table")
+      ),
+      
+
+      tabItem(tabName = "visualization",
+        h2("Total Population"),
+        sliderInput("dateRange", "Year:", 
+                    min = min(regtotalpop$Year), max = max(regtotalpop$Year), 
+                    value = range(regtotalpop$Year)),
+        uiOutput("allPlots")
+        ),
+      
+      
+
+      tabItem(tabName = "old",
+              h2("Age Dependency Ratio of Old"),
+              selectInput("category1", "Region:", choices = unique(oldpop$Region), selected = "North America"),
+              sliderInput("dateRange1", "Year:", 
+                          min = min(oldpop$Year), max = max(oldpop$Year), 
+                          value = range(oldpop$Year)),
+              plotOutput("linePlot1")
+      ),
+      
+      
+
+      tabItem(tabName = "urban",
+              h2("Urban population"),
+              selectInput("category2", "Year:", choices = unique(urbanpop$Year), selected = 2019),
+              plotOutput("linePlot2")
+      ),
+      
+      
+
+      tabItem(tabName = "id",
+              h2("Infant Deaths"),
+              selectInput("category3", "Region:", choices = unique(id$Region), selected = "North America"),
+              sliderInput("dateRange3", "Year:", 
+                          min = min(id$Year), max = max(id$Year), 
+                          value = range(id$Year)),
+              plotOutput("linePlot3")
+      ),
+      
+
+      tabItem(tabName = "gender",
+              h2("Gender of Population"),
+              selectInput("category4", "Region:", choices = unique(genderpop$Region), selected = "North America"),
+              selectInput("Year4", "Year:", choices = unique(genderpop$Year), selected = 2019),
+              plotOutput("piePlot")
+      ),
+      
+
+      tabItem(tabName = "filter",
+              h2("Data Filter"),
+              selectInput("category5", "Country:", choices = unique(table$Country.Name), selected = "Australia"),
+              sliderInput("dateRange5", "Year:", 
+                          min = min(table$Year), max = max(table$Year), 
+                          value = range(table$Year)),
+              DT::dataTableOutput("filteredTable")
+      )
+    )
+  )
+)
+
+```
+
+
+```{r}
+server <- function(input, output) {
+  
+
+  output$meanValueBox <- renderValueBox({
+    valueBox(
+      value = (world %>% filter(Indicator.Name=="Population, male") %>% filter(Year==2019) %>% select(Value))+(world %>% filter(Indicator.Name=="Population, female") %>% filter(Year==2019) %>% select(Value)),
+      subtitle = "Total population-2019",
+      icon = icon("tachometer-alt"),
+      color = "blue"
+    )
+  })
+  
+  output$maxValueBox <- renderValueBox({
+    valueBox(
+      value = paste0(round(world %>% filter(Indicator.Name=="Age dependency ratio, old") %>% filter(Year==2019) %>% select(Value),2),"%"),
+      subtitle = "Age Dependency Ratio of Old-2019",
+      icon = icon("tachometer-alt"),
+      color = "green"
+    )
+  })
+  
+  output$minValueBox <- renderValueBox({
+    valueBox(
+      value = world %>% filter(Indicator.Name=="Urban population") %>% filter(Year==2019) %>% select(Value),
+      subtitle = "Urban population-2019",
+      icon = icon("tachometer-alt"),
+      color = "red"
+    )
+  })
+  
+
+  output$table <- DT::renderDataTable({
+    DT::datatable(datalong, options = list(scrollX = TRUE))
+  })
+  
+#### display total population of seven regions in one page 
+  output$allPlots <- renderUI({
+  plot_list <- lapply(unique(regtotalpop$Region), function(region) {
+    plotname <- paste0("plot_", gsub(" ", "_", region))
+    output[[plotname]] <- renderPlot({
+      filtered_data <- regtotalpop %>%
+        filter(Region == region) %>% 
+        filter(Year >= input$dateRange[1], Year <= input$dateRange[2])
+      
+      ggplot(filtered_data, aes(x = Year, y = Value)) +
+        geom_line(color = "blue") +
+        geom_point(color = "red") +
+        theme_minimal() +
+        labs(title = paste("Total population - ", region),
+             x = "Year",
+             y = "Population")
+    })
+    
+    column(width = 6, plotOutput(plotname, height = "300px")) ### adjust the arrangement
+  })
+  
+  do.call(fluidRow, plot_list)
+})
+  
+
+  output$linePlot1 <- renderPlot({
+    filtered_data <- oldpop %>%
+      filter(Region == input$category1) %>% 
+      filter(Year >= input$dateRange1[1], Year <= input$dateRange1[2])
+    
+    ggplot(filtered_data, aes(x = Year, y = Value)) +
+      geom_line(color = "blue") +
+      geom_point(color = "red") +
+      theme_minimal() +
+      labs(title = paste("Age Dependency Ratio of Old - ", input$category1),
+           x = "Year",
+           y = "Population")
+  })
+  
+
+  output$linePlot2 <- renderPlot({
+    filtered_data <- urbanpop %>%
+      filter(Year == input$category2)
+    
+    ggplot(filtered_data, aes(x = Region, y = Value)) +
+      geom_col(fill = "skyblue") +
+      theme_minimal() +
+      labs(title = paste("Urban population - ", input$category2),
+           x = "Year",
+           y = "Population")
+  })
+  
+
+  output$linePlot3 <- renderPlot({
+    filtered_data <- id %>%
+      filter(Region == input$category3) %>% 
+      filter(Year >= input$dateRange3[1], Year <= input$dateRange3[2])
+    
+    ggplot(filtered_data, aes(x = Year, y = Value)) +
+      geom_line(color = "blue") +
+      geom_point(color = "red") +
+      theme_minimal() +
+      labs(title = paste("Infant Deaths - ", input$category3),
+           x = "Year",
+           y = "Population")
+  })
+  
+
+  output$piePlot <- renderPlot({
+    filtered_data <- genderpop %>%
+      filter(Region == input$category4) %>% 
+      filter(Year == input$Year4)
+    
+    filtered_data <- filtered_data %>%
+      arrange(desc(Region)) %>%
+      mutate(prop = Value / sum(filtered_data$Value) * 100) %>%
+      mutate(ypos = cumsum(prop) - 0.5 * prop)
+    
+    
+    ggplot(filtered_data, aes(x = "", y = prop,fill=gender)) +
+      geom_bar(width = 1, stat = "identity", color = "white") +
+      coord_polar("y", start = 0) +
+      scale_fill_brewer(palette = "Pastel1") +
+      theme_void() +
+      theme(legend.title = element_blank()) +
+      geom_text(aes(y = ypos, label = paste0(round(prop), "%")), color = "black", size = 5)+
+      labs(title = paste("Gender - ", input$category4))
+  })
+  
+
+  output$filteredTable <- DT::renderDataTable({
+    filtered_data <- table %>%
+      filter(Country.Name==input$category5) %>% 
+      filter(Year >= input$dateRange5[1], Year <= input$dateRange5[2])
+    DT::datatable(filtered_data)
+  })
+}
+
+
+shinyApp(ui = ui, server = server)
+
+```
+

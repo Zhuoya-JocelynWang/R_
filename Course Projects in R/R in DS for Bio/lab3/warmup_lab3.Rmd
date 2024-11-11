@@ -1,0 +1,39 @@
+---
+title: "Lab3-warmup"
+author: "Zhuoya Wang"
+date: "2024-01-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r}
+height<- c(30.7, 37.6, 28.4, NA, 33.2)
+```
+
+
+```{r}
+mass <- c(4, 5.2, 3.7, NA, 4.6)
+
+```
+
+
+```{r}
+rowname <- c("plant1", "plant2", "plant3", "plant4", "plant5")
+
+plant_matrix <- cbind(height, mass)
+
+row.names(plant_matrix) <- rowname
+plant_matrix
+
+
+plant_means <- colMeans(plant_matrix, na.rm = T);plant_means
+
+final_matrix <- rbind(plant_matrix, plant_means); final_matrix
+```
+

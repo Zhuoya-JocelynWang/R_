@@ -1,0 +1,275 @@
+---
+title: "Task_2-Part1"
+author: "Zhuoya Wang"
+date: "2024-07-22"
+output: pdf_document
+---
+
+### dataset 
+```{r}
+imr <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/infantMortalityRate.csv")
+doctors <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/medicalDoctors.csv")
+
+nurses <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/nursingAndMidwife.csv")
+
+pharmacists <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/pharmacists.csv")
+
+```
+
+
+
+### checking dataset 
+```{r}
+
+##### Missing value
+sum(is.na(imr))
+
+sum(is.na(doctors))
+
+sum(is.na(nurses))
+
+sum(is.na(pharmacists))
+```
+
+```{r}
+summary(imr)
+str(imr)
+```
+
+```{r}
+summary(doctors)
+
+str(doctors)
+```
+
+
+```{r}
+summary(nurses)
+
+str(nurses)
+```
+
+```{r}
+summary(pharmacists)
+
+str(pharmacists)
+```
+
+
+
+
+##### dashboard
+```{r}
+library(shiny)
+library(plotly)
+library(dplyr)
+
+
+imr <- imr %>% rename(Country = Location, Year = Period, IMR_Value = First.Tooltip)
+doctors <- doctors %>% rename(Country = Location, Year = Period, Doctors_Value = First.Tooltip)
+nurses <- nurses %>% rename(Country = Location, Year = Period, Nursing_Value = First.Tooltip)
+pharmacists <- pharmacists %>% rename(Country = Location, Year = Period, Pharmacists_Value = First.Tooltip)
+
+
+```
+
+
+### merge three dataset
+```{r}
+
+imr$IMR_Value <- as.numeric(sub(" \\[.*\\]", "", imr$IMR_Value))
+
+##### Merge data
+data <- imr %>%
+  filter(Dim1 == "Both sexes") %>%
+  dplyr::select(Country, Year, IMR_Value) %>%
+  left_join(doctors %>% dplyr::select(Country, Year, Doctors_Value), by = c("Country", "Year")) %>%
+  left_join(nurses %>% dplyr::select(Country, Year, Nursing_Value), by = c("Country", "Year")) %>%
+  left_join(pharmacists %>% dplyr::select(Country, Year, Pharmacists_Value), by = c("Country", "Year"))
+
+##### replace missing values by using mean
+data$Doctors_Value <- as.numeric(data$Doctors_Value)
+data$Nursing_Value <- as.numeric(data$Nursing_Value)
+data$Pharmacists_Value <- as.numeric(data$Pharmacists_Value)
+
+suppressWarnings({
+  data <- data %>% mutate(
+    Doctors_Value = ifelse(is.na(Doctors_Value), mean(Doctors_Value, na.rm = TRUE), Doctors_Value),
+    Nursing_Value = ifelse(is.na(Nursing_Value), mean(Nursing_Value, na.rm = TRUE), Nursing_Value),
+    Pharmacists_Value = ifelse(is.na(Pharmacists_Value), mean(Pharmacists_Value, na.rm = TRUE), Pharmacists_Value)
+  )
+})
+
+data$Year <- as.integer(data$Year)
+
+
+```
+
+
+#### Shiny app
+```{r}
+#####Shiny UI
+ui <- fluidPage(
+  titlePanel("Health Sector Dashboard"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("variable", "Select Variable:",
+                  choices = c("Infant Mortality Rate" = "IMR_Value",
+                              "Medical Doctors" = "Doctors_Value",
+                              "Nursing and Midwifery Personnel" = "Nursing_Value",
+                              "Pharmacists" = "Pharmacists_Value")),
+      sliderInput("year", "Select Year:", min = min(data$Year), max = max(data$Year), value = min(data$Year), step = 1, round = TRUE)
+    ),
+    mainPanel(
+      plotlyOutput("heatmap")
+    )
+  )
+)
+
+##### Shiny Server
+server <- function(input, output) {
+  output$heatmap <- renderPlotly({
+    filtered_data <- data %>% filter(Year == input$year)
+    plot_ly(filtered_data, locations = ~Country, z = ~get(input$variable), type = "choropleth", locationmode = "country names",
+            colorscale = "Viridis", marker = list(line = list(color = 'rgb(255,255,255)', width = 2))) %>%
+      layout(title = paste("Geographical Heatmap for", input$variable, "in", input$year),
+             geo = list(showframe = FALSE, showcoastlines = FALSE, projection = list(type = 'mercator')))
+  })
+}
+
+#### Run
+shinyApp(ui = ui, server = server)
+```
+
+
+### doctors: 1990 ~ 2018
+```{r}
+sort(unique(doctors$Year))
+```
+
+
+### imr :1950 ~ 2019
+```{r}
+sort(unique(imr$Year))
+```
+
+
+### nurses :1990 ~ 2018
+```{r}
+sort(unique(nurses$Year))
+```
+
+### pharmacists :1990 ~ 2018
+```{r}
+sort(unique(pharmacists$Year))
+```
+
+
+### imr unique country
+```{r}
+uni_country <- imr %>%
+  filter(Dim1 == "Both sexes") %>%
+  distinct(Country) %>%
+  arrange(Country);uni_country
+```
+
+
+
+#### Forcast IMR
+
+```{r}
+library(ggplot2)
+library(dplyr)
+#install.packages('astsa')
+library(astsa)
+#install.packages('forecast')
+library(forecast)
+library(MASS)
+
+imr$IMR_Value <- as.numeric(sub(" \\[.*\\]", "", imr$IMR_Value))
+
+
+imr_filtered <- imr %>% filter(Dim1 == "Both sexes")
+imr_filtered <- imr_filtered %>%
+  group_by(Country) %>%
+  arrange(Year)
+
+
+imr_ts_list <- imr_filtered %>%
+  split(.$Country) %>%
+  lapply(function(df) {
+    ts(df$IMR_Value, start = min(df$Year), end = max(df$Year), frequency = 1)
+  })
+
+
+###### raw IMR data
+par(mfrow = c(2, 2))
+for (country in names(imr_ts_list)) {
+  plot(imr_ts_list[[country]], main = paste("IMR for", country), ylab = "IMR Value", xlab = "Year")
+}
+```
+
+
+
+```{r}
+
+library(tidyverse)
+library(forecast)
+library(tseries)
+
+imr_filtered <- imr %>% filter(Dim1 == "Both sexes")
+
+imr_pivot <- imr_filtered %>% 
+  dplyr::select(Country, Year, IMR_Value) %>% 
+  spread(key = Country, value = IMR_Value)
+
+imr_pivot <- imr_pivot %>% mutate(across(everything(), as.numeric))
+imr_pivot <- imr_pivot %>% fill(everything(), .direction = "downup")
+
+###### empty data frame for the log differences
+imr_log_diff <- data.frame(Year = imr_pivot$Year[-1])
+
+
+for (country in colnames(imr_pivot)[-1]) {
+  imr_log_diff[[country]] <- diff(log(imr_pivot[[country]]))
+}
+
+forecasted_imr <- data.frame(Year = (max(imr$Year) + 1):(max(imr$Year) + 10))
+
+for (country in colnames(imr_log_diff)[-1]) {
+
+  arima_model <- auto.arima(imr_log_diff[[country]], seasonal = FALSE)
+  
+
+  forecast_values <- forecast(arima_model, h = 10)
+  
+
+  last_observed_value <- imr_pivot[[country]][nrow(imr_pivot)]
+  forecasted_imr[[country]] <- exp(cumsum(forecast_values$mean) + log(last_observed_value))
+}
+
+print(forecasted_imr)
+
+```
+
+
+
+
+```{r}
+first_four_countries <- colnames(forecasted_imr)[2:5]
+forecasted_imr_long <- forecasted_imr %>% 
+  gather(key = "Country", value = "Forecasted_IMR", -Year) %>%
+  filter(Country %in% first_four_countries)
+
+ggplot(forecasted_imr_long, aes(x = Year, y = Forecasted_IMR, color = Country)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(min(forecasted_imr$Year), max(forecasted_imr$Year), by = 1)) +
+  labs(title = "10-Year Forecast of Infant Mortality Rate for the First Four Countries", 
+       y = "Infant Mortality Rate", 
+       x = "Year") +
+  theme_minimal() +
+  scale_color_discrete(name = "Country")
+
+```
+
+

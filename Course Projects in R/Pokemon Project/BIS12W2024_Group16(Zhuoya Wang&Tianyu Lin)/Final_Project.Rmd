@@ -1,0 +1,153 @@
+---
+title: "BIS15L_Final"
+author: "Tianyu Lin & Zhuoya Wang"
+date: "2024-03-07"
+output: 
+  html_document: 
+    keep_md: true
+---
+
+```{r message=FALSE, warning=FALSE}
+library("tidyverse")
+library("janitor")
+library("naniar")
+library("dplyr")
+```
+
+```{r}
+pokemon <- read_csv("pokemon.csv")
+```
+
+```{r}
+glimpse(pokemon)
+```
+
+```{r}
+summary(pokemon)
+```
+
+Check NA
+```{r}
+pokemon %>% naniar::miss_var_summary()
+```
+
+
+
+
+It is observed that the variable named'type2' has many blank observations, so we replace them with none.
+
+```{r}
+pokemon <- pokemon %>%
+  mutate_all(~ifelse( .== "", NA, .))%>%
+  mutate(type2 = replace_na(type2, 'none'))
+```
+
+
+
+
+#### Group_by: Generation
+
+Number of Pokémon Introduced in Each Generation:
+```{r}
+pokemon_per_gen <- table(pokemon$generation);pokemon_per_gen
+```
+
+
+```{r}
+# Plot
+ggplot(data = as.data.frame(pokemon_per_gen), aes(x = reorder(Var1, Freq), y = Freq)) + geom_bar(stat = "identity", fill = "lightskyblue") +
+  labs(x = "Generation", y = "Number of Pokémon", title = "Pokémon Introduced per Generation") +
+  coord_flip()+
+  theme_light()
+
+```
+
+Prevalence of Pokémon Types in Each Generation:
+```{r}
+# Count primary types per generation
+type_per_gen <- aggregate(cbind(type1) ~ generation, data = pokemon, FUN = function(x) length(unique(x)));type_per_gen
+
+# Plot
+ggplot(data = type_per_gen, aes(x = as.numeric(generation), y = type1)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Generation", y = "Unique Primary Types", title = "Diversity of Primary Pokémon Types per Generation") +
+  theme_light()
+```
+
+
+2. Statistic Trends
+Evolution of Average Stats:
+
+```{r}
+avg_stats_per_gen <- aggregate(cbind(hp, attack, defense, sp_attack, sp_defense, speed) ~ generation, data = pokemon, mean)
+
+# Melting the data for easier plotting
+library(reshape2)
+melted_data <- melt(avg_stats_per_gen, id.vars = "generation")
+
+# Plot
+ggplot(melted_data, aes(x = generation, y = value, color = variable)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Generation", y = "Average Stat Value", title = "Evolution of Average Stats per Generation") +
+  facet_wrap(~ variable)+
+  theme_minimal()
+```
+Distribution of Legendary Pokémon Across Generations:
+
+```{r}
+# Count legendary Pokémon per generation
+legendary_per_gen <- aggregate(is_legendary ~ generation, data = pokemon, sum)
+
+# Plot
+ggplot(data = legendary_per_gen, aes(x = generation, y = is_legendary)) +
+  geom_bar(stat = "identity", fill = "gold") +
+  labs(x = "Generation", y = "Number of Legendary Pokémon", title = "Legendary Pokémon per Generation") +
+  theme_minimal()
+```
+
+Capture Rate Change Across Generations:
+
+```{r}
+pokemon$capture_rate <- as.numeric(as.character(pokemon$capture_rate))
+
+capture_rate_per_gen <- aggregate(capture_rate ~ generation, data = pokemon, mean)
+
+ggplot(data = capture_rate_per_gen, aes(x = generation, y = capture_rate)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red", size = 2) +
+  labs(x = "Generation", y = "Average Capture Rate", title = "Average Capture Rate Change Across Generations") +
+  theme_minimal()
+```
+
+
+
+
+
+```{r}
+against_columns <- grep("against_", names(pokemon), value = TRUE)
+
+# Calculate the mean of 'against_' variables for each generation
+avg_against_per_gen <- pokemon %>%
+  group_by(generation) %>%
+  summarise_at(vars(against_columns), mean, na.rm = TRUE) %>%
+  gather(key = "against_type", value = "mean_value", -generation)
+
+# Plot
+ggplot(avg_against_per_gen, aes(x = generation, y = mean_value, color = against_type)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Generation", y = "Average Against Value", title = "Average 'Against' Values per Generation") +
+  theme_minimal() +
+  facet_wrap(~ against_type)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  #labels readability
+  scale_color_viridis_d() 
+```
+
+
+
+
+
+
+

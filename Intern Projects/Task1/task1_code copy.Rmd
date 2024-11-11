@@ -1,0 +1,390 @@
+---
+title: "task1"
+author: "Zhuoya Wang"
+date: "2024-07-06"
+output: pdf_document
+---
+
+
+```{r}
+library(tidyverse)
+library(caret)
+library(pROC)
+library(glmnet)
+library(ggplot2)
+library(data.table)
+library(dplyr)
+```
+
+
+
+```{r}
+heartdata <- read.csv("~/Desktop/Intern/Task 1/heart dataset.csv")
+
+```
+
+
+
+```{r}
+str(heartdata)
+
+```
+
+```{r}
+summary(heartdata)
+```
+
+```{r}
+sum(is.na(heartdata))
+```
+
+
+#### change categorical to factor
+```{r}
+heartdata <- heartdata%>%
+  mutate(anaemia = as.factor(anaemia),
+         diabetes = as.factor(diabetes),
+         high_blood_pressure = as.factor(high_blood_pressure),
+         sex = as.factor(sex),
+         smoking = as.factor(smoking),
+         DEATH_EVENT = as.factor(DEATH_EVENT))
+
+
+```
+
+
+
+#### convert integer to numeric
+```{r}
+heartdata <- heartdata%>%
+  mutate(creatinine_phosphokinase = as.numeric(creatinine_phosphokinase),
+         ejection_fraction = as.numeric(ejection_fraction),
+         serum_sodium = as.numeric(serum_sodium),
+         time = as.numeric(time))
+
+```
+
+
+#### summary again
+```{r}
+summary(heartdata)
+str(heartdata)
+```
+
+
+
+#### check outliers
+```{r}
+the.initial.mod <- glm(DEATH_EVENT ~ age + anaemia + creatinine_phosphokinase +
+                         diabetes + ejection_fraction + high_blood_pressure +
+                         platelets + serum_creatinine + serum_sodium +
+                         sex + smoking + time, data = heartdata, family = binomial(link = logit))
+
+std.r = rstandard(the.initial.mod, type = "pearson") # person studentized residuals
+dfBeta = dfbeta(the.initial.mod)
+hist(std.r, main = "Pearson Standardized Residuals")
+cutoff.std = 3 #Use cutoff +/- 2 or 3
+std.r[abs(std.r) > cutoff.std] #Shows the values of std.r
+
+```
+
+
+
+
+```{r}
+newheart <- heartdata[-c(21, 39, 132, 187, 196, 247),]
+```
+
+
+
+
+
+
+
+
+
+
+
+#### splite dataset into training and testing
+```{r}
+set.seed(3090)
+train_idx <- sample(1:nrow(newheart), 0.8 * nrow(newheart))
+train_data <- newheart[train_idx, ]
+test_data <- newheart[-train_idx, ]
+```
+
+
+
+```{r}
+preprocess_params <- preProcess(train_data[, -ncol(train_data)], method = c("center", "scale"))
+train_scaled <- predict(preprocess_params, train_data[, -ncol(train_data)])
+test_scaled <- predict(preprocess_params, test_data[, -ncol(train_data)])
+
+# Add the DEATH_EVENT back to the scaled data frames
+train_scaled$DEATH_EVENT <- train_data$DEATH_EVENT
+test_scaled$DEATH_EVENT <- test_data$DEATH_EVENT
+```
+
+
+
+```{r}
+
+# Fit the logistic regression model
+full.model <- glm(DEATH_EVENT ~ ., data = train_scaled, family = binomial(link = logit))
+
+empty.model <- glm(DEATH_EVENT ~ 1, data = train_scaled, family = binomial(link = logit))
+
+```
+
+
+
+
+
+
+```{r}
+# Summary of the full model
+summary(full.model)
+```
+
+
+```{r}
+#summary of the empty model
+summary(empty.model)
+```
+
+```{r}
+
+## forward
+step(empty.model,scope = list(lower = empty.model, upper = full.model),direction = "forward")
+best.forward.AIC = step(empty.model,scope = list(lower = empty.model, upper = full.model),direction = "forward", criterion = "AIC", trace = FALSE)
+best.forward.AIC$formula
+
+
+## Backward
+step(full.model,scope = list(lower = empty.model, upper = full.model),direction = "backward")
+best.backward.AIC = step(full.model,scope = list(lower = empty.model, upper = full.model),direction = "backward", criterion = "AIC", trace = FALSE)
+best.backward.AIC$formula
+
+## FB and BF
+best.FB.AIC = step(empty.model,scope = list(lower = empty.model, upper = full.model),direction = "both", criterion = "AIC", trace = FALSE)
+best.BF.AIC = step(full.model,scope = list(lower = empty.model, upper = full.model),direction = "both", criterion = "AIC", trace = FALSE)
+best.FB.AIC$formula
+best.BF.AIC$formula
+
+```
+
+
+```{r}
+summary(best.BF.AIC)
+summary(best.FB.AIC)
+summary(best.backward.AIC)
+summary(best.forward.AIC)
+```
+
+
+
+```{r}
+
+variables_to_plot <- c("age", "ejection_fraction", "serum_creatinine", "serum_sodium", "platelets", "time")
+
+```
+
+
+
+```{r}
+train_model <- glm(formula = DEATH_EVENT ~., family = binomial(link = logit), data = train_scaled)
+```
+
+
+
+
+
+#####Histogram 
+```{r}
+# Histograms for selected variables
+library(ggplot2)
+ggplot(newheart, aes(x = age, fill = DEATH_EVENT)) +
+  geom_histogram(position = "stack", alpha = 0.6, binwidth = 2, color = "black")+
+  labs(title = "Age Distribution by Death Event",
+       x = "Age",
+       y = "Count") +
+  scale_fill_manual(values = c("orange", "yellow"), labels = c("Survived", "Died")) +
+  theme_minimal()
+
+```
+
+
+```{r}
+ggplot(newheart, aes(x = ejection_fraction, fill = DEATH_EVENT)) +
+  geom_histogram(position = "identity", alpha = 0.6, binwidth = 5, color ="black") +
+  labs(title = "Ejection_fraction Distribution by Death Event", x = "Ejection_fraction", y = "Count") + scale_fill_manual(values = c("orange", "yellow"), labels = c("Survived", "Died")) +
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(newheart, aes(x = serum_creatinine, fill = DEATH_EVENT)) +
+  geom_histogram(position = "identity", alpha = 0.6, binwidth = 0.2, color ="black") +
+  labs(title = "Serum_creatinine Distribution by Death Event", x = "Serum_creatinine", y = "Count") + scale_fill_manual(values = c("purple", "navy"), labels = c("Survived", "Died")) +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+
+ggplot(newheart, aes(x = serum_sodium, fill = DEATH_EVENT)) +
+  geom_histogram(position = "identity", alpha = 0.6, binwidth = 1, color ="black") +
+  labs(title = "Serum_sodium Distribution by Death Event", x = "Serum_sodium", y = "Count")+ scale_fill_manual(values = c("purple", "navy"), labels = c("Survived", "Died")) +
+  theme_minimal()
+
+```
+
+
+```{r}
+
+ggplot(newheart, aes(x = platelets, fill = DEATH_EVENT)) +
+  geom_histogram(position = "identity", alpha = 0.6,  color ="black") +
+  labs(title = "Platelets Distribution by Death Event", x = "Platelets", y = "Count")+ scale_fill_manual(values = c("magenta", "cyan"), labels = c("Survived", "Died")) +
+  theme_minimal()
+
+
+```
+
+
+
+```{r}
+ggplot(newheart, aes(x =time, fill = DEATH_EVENT)) +
+  geom_histogram(position = "identity", alpha = 0.6,  color ="black") +
+  labs(title = "Time Distribution by Death Event", x = "Time", y = "Count")+ scale_fill_manual(values = c("magenta", "cyan"), labels = c("Survived", "Died")) +
+  theme_minimal()
+
+```
+
+##### train dataset
+
+```{r}
+model <- glm(formula = DEATH_EVENT ~., family = binomial(link = logit), data = train_scaled)
+
+train_pred <- predict(model, train_scaled, type = "response")
+train_pre_class <- ifelse(train_pred > 0.5, 1, 0)  # classify as 1 if probability > 0.5, otherwise 0
+```
+
+
+```{r}
+library(caret)
+library(e1071)
+library(pROC)
+
+train_conf_matrix <- table(Predicted = train_pre_class, Actual = train_scaled$DEATH_EVENT)
+print(train_conf_matrix)
+
+### Calculate accuracy, sensitivity, and specificity
+train_accuracy <- sum(diag(train_conf_matrix)) / sum(train_conf_matrix);train_accuracy
+train_sensitivity <- train_conf_matrix[2, 2] / sum(train_conf_matrix[2, ]);train_sensitivity
+train_specificity <- train_conf_matrix[1, 1] / sum(train_conf_matrix[1, ]);train_specificity
+
+train_precision <- posPredValue(as.factor(train_pre_class), as.factor(train_scaled$DEATH_EVENT));train_precision
+
+```
+
+
+
+
+##### test dataset
+```{r}
+test_pred <- predict(model, test_scaled, type = "response")
+test_pre_class <- ifelse(test_pred > 0.5, 1, 0)  # classify as 1 if probability > 0.5, otherwise 0
+```
+
+
+```{r}
+
+library(caret)
+library(e1071)
+library(pROC)
+
+test_conf_matrix <- table(Predicted = test_pre_class, Actual = test_scaled$DEATH_EVENT)
+print(test_conf_matrix)
+
+### Calculate accuracy, sensitivity, and specificity
+test_accuracy <- sum(diag(test_conf_matrix)) / sum(test_conf_matrix);test_accuracy
+test_sensitivity <- test_conf_matrix[2, 2] / sum(test_conf_matrix[2, ]);test_sensitivity
+test_specificity <- test_conf_matrix[1, 1] / sum(test_conf_matrix[1, ]);test_specificity
+
+test_precision <- posPredValue(as.factor(test_pre_class), as.factor(test_scaled$DEATH_EVENT));test_precision
+
+```
+
+
+
+
+```{r}
+library(ggplot2)
+
+ggplot(newheart, aes(x = factor(diabetes), fill = DEATH_EVENT)) +
+  geom_bar(position = position_dodge()) +
+  labs(title = "Impact of Diabetes on Death Event",
+       x = "Diabetes Status (0 = No, 1 = Yes)",
+       y = "Count") +
+ scale_fill_manual(values = c("salmon", "skyblue"), labels = c("Survived", "Died")) +
+  theme_minimal()
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(newheart, aes(x = factor(high_blood_pressure), fill = DEATH_EVENT)) +
+  geom_bar(position = position_dodge()) +
+  labs(title = "Impact of High Blood Pressure on Death Event",
+       x = "HBP Status (0 = No, 1 = Yes)",
+       y = "Count") +
+ scale_fill_manual(values = c("salmon", "skyblue"), labels = c("Survived", "Died")) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(newheart, aes(x = factor(sex), fill = DEATH_EVENT)) +
+  geom_bar(position = position_dodge()) +
+  labs(title = "Impact of Sex on Death Event",
+       x = "Sex (0 = Female, 1 = Male)",
+       y = "Count") +
+  scale_fill_manual(values = c("orange","brown2"), labels = c("Survived", "Died")) +
+  theme_minimal()
+```
+
+
+
+
+```{r}
+ggplot(newheart, aes(x = factor(smoking), fill = DEATH_EVENT)) +
+  geom_bar(position = position_dodge()) +
+  labs(title = "Impact of Smoking on Death Event",
+       x = "Smoking (0 = No, 1 = Yes)",
+       y = "Count") +
+  scale_fill_manual(values = c("orange","brown2"), labels = c("Survived", "Died")) +
+  theme_minimal()
+```
+
+
+
+```{r}
+fmodel <- glm(formula = DEATH_EVENT ~ time + ejection_fraction + serum_creatinine + 
+    serum_sodium + age, family = binomial(link = logit), data = train_scaled)
+
+fmodel_pred <- predict(fmodel, test_scaled, type = "response")
+fmodel_pred_class <- ifelse(fmodel_pred > 0.5, 1, 0)
+```
+
+
+```{r}
+reduced_confusion <- confusionMatrix(factor(fmodel_pred_class), factor(test_scaled$DEATH_EVENT))
+print(reduced_confusion)
+```
+
+```{r}
+fmodel_precision <- posPredValue(as.factor(fmodel_pred_class), as.factor(test_scaled$DEATH_EVENT));fmodel_precision
+```
+

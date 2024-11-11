@@ -1,0 +1,249 @@
+---
+title: "Task2-reg"
+author: "Zhuoya Wang"
+date: "2024-07-22"
+output: pdf_document
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(MASS)  
+library(caret) 
+#install.packages("carData")
+library(car)
+```
+
+```{r}
+imr <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/infantMortalityRate.csv")
+doctors <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/medicalDoctors.csv")
+
+nurses <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/nursingAndMidwife.csv")
+
+pharmacists <- read.csv("~/Desktop/Intern/Task2/Infant Mortality Rate/pharmacists.csv")
+
+```
+
+
+```{r}
+imr <- imr %>% rename(Country = Location, Year = Period, IMR_Value = First.Tooltip)
+doctors <- doctors %>% rename(Country = Location, Year = Period, Doctors_Value = First.Tooltip)
+nurses <- nurses %>% rename(Country = Location, Year = Period, Nursing_Value = First.Tooltip)
+pharmacists <- pharmacists %>% rename(Country = Location, Year = Period, Pharmacists_Value = First.Tooltip)
+
+
+```
+
+
+```{r}
+imr$IMR_Value <- as.numeric(sub(" \\[.*\\]", "", imr$IMR_Value))
+
+# Merge datasets
+data <- imr %>%
+  filter(Dim1 == "Both sexes") %>%
+  dplyr::select(Country, Year, IMR_Value) %>%
+  left_join(doctors %>% dplyr::select(Country, Year, Doctors_Value), by = c("Country", "Year")) %>%
+  left_join(nurses %>% dplyr::select(Country, Year, Nursing_Value), by = c("Country", "Year")) %>%
+  left_join(pharmacists %>% dplyr::select(Country, Year, Pharmacists_Value), by = c("Country", "Year"))
+
+```
+
+
+```{r}
+data$Doctors_Value <- as.numeric(data$Doctors_Value)
+data$Nursing_Value <- as.numeric(data$Nursing_Value)
+data$Pharmacists_Value <- as.numeric(data$Pharmacists_Value)
+data$Year <- as.numeric(data$Year)
+
+
+data <- data %>% mutate(across(c(Doctors_Value, Nursing_Value, Pharmacists_Value), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+
+
+data <- na.omit(data)
+```
+
+
+
+
+```{r}
+remove_outliers <- function(df, column) {
+  Q1 <- quantile(df[[column]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(df[[column]], 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  df <- df %>% filter(df[[column]] >= lower_bound & df[[column]] <= upper_bound)
+  return(df)
+}
+
+#### remove outliers
+new.data <- remove_outliers(data, "Doctors_Value")
+new.data <- remove_outliers(new.data, "Nursing_Value")
+new.data <- remove_outliers(new.data, "Pharmacists_Value")
+```
+
+
+### initial regression
+```{r}
+
+new.data$Country <- as.factor(new.data$Country)
+
+
+initial_model <- lm(IMR_Value ~ Year + Country + Doctors_Value + Nursing_Value + Pharmacists_Value, data = new.data)
+
+summary(initial_model)
+```
+
+
+
+### model selection
+```{r}
+stepwise_model <- stepAIC(initial_model, direction = "both")
+
+summary(stepwise_model)
+```
+
+
+```{r}
+selected_formula <- formula(stepwise_model)
+
+updated_model<- lm(selected_formula, data = new.data)
+
+summary(updated_model)
+```
+
+
+```{r}
+vif(updated_model)
+
+#####diagnostic plots
+par(mfrow = c(2, 2))
+plot(updated_model)
+
+###residual
+residuals <- rstandard(updated_model)
+qqnorm(residuals)
+qqline(residuals)
+```
+
+
+
+
+
+### initial regression without year and country
+```{r}
+
+model_3 <- lm(IMR_Value ~  Doctors_Value + Nursing_Value + Pharmacists_Value, data = new.data)
+
+
+summary(model_3)
+```
+
+
+### model selection
+```{r}
+stepwise_model3 <- stepAIC(model_3, direction = "both")
+
+summary(stepwise_model3)
+```
+
+
+```{r}
+selected_formula3 <- formula(stepwise_model3)
+
+
+updated_model3<- lm(selected_formula3, data = new.data)
+
+
+summary(updated_model3)
+```
+
+
+```{r}
+#vif(updated_model3)
+
+#### diagnostic plots
+par(mfrow = c(2, 2))
+plot(updated_model3)
+
+#### residual
+residuals_3 <- rstandard(updated_model3)
+qqnorm(residuals_3)
+qqline(residuals_3)
+```
+
+
+
+#### Evaluation -- initial_model
+```{r}
+adj_r_squared <- summary(initial_model)$adj.r.squared
+print(paste("Adjusted R-squared: ", adj_r_squared))
+```
+
+```{r}
+
+rmse_value <- sqrt(mean(residuals(initial_model)^2))
+print(paste("RMSE: ", rmse_value))
+```
+
+```{r}
+mae_value <- mean(abs(residuals(initial_model)))
+print(paste("MAE: ", mae_value))
+```
+
+
+
+#### selected variable
+
+
+```{r}
+up_r2<- summary(updated_model)$adj.r.squared
+print(paste("Adjusted R-squared: ", up_r2))
+```
+
+```{r}
+
+rmse_up <- sqrt(mean(residuals(updated_model)^2))
+print(paste("RMSE: ", rmse_up))
+```
+
+```{r}
+mae_up <- mean(abs(residuals(updated_model)))
+print(paste("MAE: ", mae_up))
+```
+
+```{r}
+plot(updated_model)
+par(2,2)
+residuals_up <- rstandard(updated_model)
+qqnorm(residuals_up)
+qqline(residuals_up)
+```
+
+
+
+
+
+
+
+#### Evaluation -- model_3 (w/o year and country)
+```{r}
+summary(model_3)
+```
+
+```{r}
+
+library(car)
+
+#### correlation matrix
+cor_matrix <- cor(new.data %>% dplyr::select(Doctors_Value, Nursing_Value, Pharmacists_Value))
+print(cor_matrix)
+
+#### VIF
+eval_model <- lm(IMR_Value ~ Doctors_Value + Nursing_Value + Pharmacists_Value, data = new.data)
+#vif_values <- vif(eval_model)
+
+```
+
+
+
