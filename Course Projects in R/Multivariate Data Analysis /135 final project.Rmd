@@ -1,0 +1,184 @@
+---
+title: "135 final project"
+author: "Zhuoya Wang"
+date: "2023-06-11"
+output:
+  word_document: default
+  pdf_document: default
+---
+```{r}
+##Packages
+#install.packages("mlbench")
+#install.packages("broom")
+#install.packages("klaR")
+#install.packages("psych")
+#install.packages("devtools")
+#install.packages("usethis")
+###Real
+library(mlbench)
+library(mvtnorm)
+library(klaR)
+library(psych)
+library(MASS)
+#library(ggord)
+library(devtools)
+library(heplots)
+
+
+data("PimaIndiansDiabetes")
+
+pima = PimaIndiansDiabetes
+
+#pima$diabetes = ifelse(pima$diabetes == 'pos', 1, 0)
+#pima$diabetes = as.factor(pima$diabetes)
+
+
+#########statistical summary
+#missing_valus = sum(is.na(pima)) ### we dont have missing data
+
+#nearly double the number of observations with class 0 (no onset of diabetes) than there are with class 1 (onset of diabetes)
+
+### data summary
+summary(pima) ####
+
+
+#install.packages("matrixStats")
+library(matrixStats)
+
+
+attribute_medians <- colMedians(as.matrix(pima[, c("pregnant", "glucose", "pressure", "triceps", "insulin", "mass", "pedigree", "age")]))
+
+pima_filled <- pima
+
+
+##glucose replaced with median
+pima_filled$glucose <- ifelse(pima$glucose == 0, attribute_medians["glucose"], pima$glucose)
+
+#pressure replaced with mean 
+pima_filled$pressure <- ifelse(pima$pressure == 0, attribute_medians["pressure"], pima$pressure)
+
+
+###triceps replaced with mean
+pima_filled$triceps <- ifelse(pima$triceps == 0, attribute_medians["triceps"], pima$triceps)
+
+
+###insulin replaced with mean 
+pima_filled$insulin <- ifelse(pima$insulin == 0, attribute_medians["insulin"], pima$insulin)
+
+##mass replaced with mean
+pima_filled$mass<- ifelse(pima$mass== 0, attribute_medians["mass"], pima$mass)
+
+head(pima_filled)
+
+
+```
+
+
+
+
+```{r}
+group0 <- subset(pima_filled, diabetes == "neg")
+group1 <- subset(pima_filled, diabetes == "pos")
+
+mydata0 = group0[1:8]
+mydata1 = group1[1:8]
+
+s0 = round(cov(mydata0),2)
+s1 = round(cov(mydata1),2)
+
+##### Data visilization
+pairs.panels(pima_filled[1:8],
+             gap = 0,
+             bg = c("red", "blue")[pima_filled$diabetes],
+             pch = 21)
+
+```
+
+
+
+
+```{r}
+#### Box'M tst.  LDA condition test <--- failed
+res <- boxM(pima_filled[, 1:8], pima_filled[, "diabetes"])
+res #### Small pvalue, reject the null hypothesis and we are suppose to use ADQ
+
+summary(res)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(MASS)
+
+
+set.seed(123)  # For reproducibility
+train_idx <- sample(1:nrow(pima_filled), 0.7 * nrow(pima_filled)) ##### Lower error rate
+train_data <- pima_filled[train_idx, ]
+test_data <- pima_filled[-train_idx, ]
+
+qda_model <- qda(diabetes ~ ., data = train_data)
+qda_model
+
+p1_qda <- predict(qda_model, train_data)$class
+tab_qda <- table(Predicted = p1_qda, Actual = train_data$diabetes)
+tab_qda
+
+
+p2_qda <- predict(qda_model, test_data)$class
+tab1_qda <- table(Predicted = p2_qda, Actual = test_data$diabetes)
+tab1_qda
+
+sum(diag(tab_qda))/sum(tab_qda)
+sum(diag(tab1_qda))/sum(tab1_qda)
+```
+
+
+
+```{r}
+##### estimator for decision boundary
+c0 = subset(train_data, train_data$diabetes == 'neg')
+c1 = subset(train_data, train_data$diabetes == 'pos')
+
+c0_data = c0[,1:8]
+c1_data = c1[,1:8]
+
+s0 = cov(c0_data)
+s1 = cov(c1_data)
+
+colMeans(c0_data)
+colMeans(c1_data)
+
+L1 = 0.5*log(det(cov(c1_data))/det(cov(c0_data)))
+L2 = 0.5*(t(colMeans(c1_data))%*%solve(cov(c1_data))%*%(colMeans(c1_data))-t(colMeans(c0_data))%*%solve(cov(c0_data))%*%(colMeans(c0_data)))
+
+L1 + L2
+```
+
+
+
+
+```{r}
+b1 = colMeans(c0_data)%*%solve(cov(c0_data))
+b1
+
+b2 = colMeans(c1_data)%*%solve(cov(c1_data))
+b2
+
+b1-b2
+```
+
+
+```{r}
+a = solve(cov(c1_data))-solve(cov(c0_data))
+a
+
+#### decision boundary 
+#f(x) = 0.5*t(x)*a*x + t(x)*(b1-b2)+(L1+L2)
+```
+
+
+
+```{r,ref.label= knitr::all_labels(), eval =F, echo = T}
+
+```

@@ -1,0 +1,317 @@
+---
+title: "STA 138 Final Project"
+author: "Zhuoya Wang"
+date: "2023-12-04"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align='center', message = FALSE, warning = FALSE)
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+#install.packages("ggpubr")
+library(ggpubr)
+library(MASS)
+library(reshape2)
+#install.packages("reshape")
+library(reshape)
+library(data.table)
+```
+
+
+
+```{r}
+### raw data
+byss <- read.csv("~/Desktop/Fall 2023/138/final project/Byssinosis.csv")
+n <- nrow(byss)
+countColumns <- c(which(names(byss) == "Byssinosis"),
+                  which(names(byss) == "Non.Byssinosis"))
+longByss <- rbind(
+  cbind(Byss=1,
+        byss[rep(1:n, byss[,"Byssinosis"]), -countColumns]),
+  cbind(Byss=0,
+        byss[rep(1:n, byss[,"Non.Byssinosis"]), -countColumns])
+)
+row.names(longByss) <- 1:nrow(longByss)
+longByss$Workspace = as.factor(longByss$Workspace)
+```
+
+
+
+## Data Visualization
+```{r}
+### Employment years & Y-- PLot 1
+
+ggplot(longByss, aes(x = longByss$Employment, fill = factor(longByss$Byss))) +
+  geom_bar(position = position_dodge(width = 0.9), stat = "count") +
+  geom_text(stat = 'count', aes(label = ..count..), 
+            vjust = -0.5, position = position_dodge(width = 0.9)) +
+  labs(title = "Byssinosis Frequency by employment years",
+       x = "Employment Years",
+       y = "Frequency")
+
+##### For positive Byss
+
+byssinosis_count <- longByss %>%
+  filter(Byss == 1) %>%
+  group_by(Employment) %>%
+  summarise(Frequency = n())
+
+# Now create the horizontal bar plot
+ggplot(byssinosis_count, aes(x = Frequency, y = Employment)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Frequency of Positive Byssinosis by Employment Years",
+       x = "Frequency of Positive Byssinosis",
+       y = "Employment Years") 
+
+```
+
+
+
+```{r}
+### Smoking & Byss --plot 2
+
+ggplot(longByss, aes(x = longByss$Smoking, fill = factor(longByss$Byss))) +
+  geom_bar(position = position_dodge(width = 0.9), stat = "count") +
+  geom_text(stat = 'count', aes(label = ..count..), 
+            vjust = -0.5, position = position_dodge(width = 0.9)) +
+  labs(title = "Byssinosis Frequency by smoking", x = "Smoking or not",
+       y = "Frequency")
+```
+
+```{r}
+#### Sex & Byss --- plot3
+ggplot(longByss, aes(x = longByss$Sex, fill = factor(longByss$Byss))) +
+  geom_bar(position = position_dodge(width = 0.9), stat = "count") +
+  geom_text(stat = 'count', aes(label = ..count..), 
+            vjust = -0.5, position = position_dodge(width = 0.9)) +
+  labs(title = "Byssinosis Frequency by Sex", x = "Sex(Female & Male)",
+       y = "Frequency")
+```
+
+```{r}
+#### Race & Byss --- plot4
+ggplot(longByss, aes(x = longByss$Race, fill = factor(longByss$Byss))) +
+  geom_bar(position = position_dodge(width = 0.9), stat = "count") +
+  geom_text(stat = 'count', aes(label = ..count..), 
+            vjust = -0.5, position = position_dodge(width = 0.9)) +
+  labs(title = "Byssinosis Frequency by Race", x = "Race (Others & White)",
+       y = "Frequency")
+```
+
+```{r}
+#### Race & Byss --- plot5
+ggplot(longByss, aes(x = longByss$Workspace, fill = factor(longByss$Byss))) +
+  geom_bar(position = position_dodge(width = 0.9), stat = "count") +
+  geom_text(stat = 'count', aes(label = ..count..), 
+            vjust = -0.5, position = position_dodge(width = 0.9)) +
+  labs(title = "Byssinosis Frequency by Workspace", 
+       x = "Workspace[1 (most dusty), 2 (less dusty), 3 (least dusty)]",
+       y = "Frequency")
+```
+
+
+
+```{r}
+empty_model  = glm(longByss$Byss ~ 1, data = longByss, family = binomial())
+summary(empty_model)
+BIC(empty_model)
+```
+
+
+```{r}
+### Full Model
+full_model = glm(longByss$Byss ~ ., data = longByss, family = binomial())
+summary(full_model)
+```
+
+####AIC
+```{r}
+library(MASS)
+n_new = nrow(longByss)
+AIC_model = stepAIC(full_model, k =2)
+```
+
+##### 1201.46 for AIC with model "Employment + Smoking + Workspace"
+
+
+
+```{r}
+BIC_model = stepAIC(full_model, k = log(n_new))
+```
+
+#### lowest BIC is 1237.78 with "Smoking + Workspace"
+
+
+
+
+####AIC model selection with direction
+```{r}
+forward.model.AIC = stepAIC(empty_model, 
+              scope = list(lower = empty_model, upper= full_model),k = 2,
+              direction = "forward", trace = FALSE)
+
+backward.model.AIC = stepAIC(full_model, 
+              scope = list(lower = empty_model, upper= full_model), 
+              k = 2,direction = "backward",trace = FALSE)
+
+both.model.AIC = stepAIC(full_model, 
+            scope = list(lower = empty_model, upper= full_model), 
+            k = 2,direction = "both",trace = FALSE)
+
+summary(forward.model.AIC)
+summary(backward.model.AIC)
+summary(both.model.AIC)
+
+forward.model.AIC$aic
+backward.model.AIC$aic
+both.model.AIC$aic
+
+
+forward.model.AIC$coefficients
+backward.model.AIC$coefficients
+both.model.AIC$coefficients
+
+anova(forward.model.AIC,backward.model.AIC, both.model.AIC )
+
+```
+
+##### all three direction choose "Workspace + Smoking + Employment" w/o interaction 
+
+
+###BIC selection
+
+```{r}
+forward.model.BIC = stepAIC(empty_model, 
+                    scope = list(lower = empty_model, upper= full_model),
+                    k =log(n_new) ,direction = "forward", trace = FALSE)
+
+backward.model.BIC = stepAIC(full_model, 
+              scope = list(lower = empty_model, upper= full_model),
+              k =log(n_new),direction = "backward",trace = FALSE)
+
+both.model.BIC = stepAIC(full_model, 
+                  scope = list(lower = empty_model, upper= full_model),
+                  k =log(n_new),direction = "both",trace = FALSE)
+
+summary(forward.model.BIC)
+summary(backward.model.BIC)
+summary(both.model.BIC)
+
+forward.model.BIC$aic
+backward.model.BIC$aic
+both.model.BIC$aic
+
+
+forward.model.BIC$coefficients
+backward.model.BIC$coefficients
+both.model.BIC$coefficients
+
+anova(forward.model.BIC,backward.model.BIC, both.model.BIC )
+```
+### BIC choose to use "Workspace + Smoking"
+
+
+
+### with interaction model
+
+```{r}
+in_full_model <- glm(longByss$Byss~.^2,data=longByss, 
+                 family = binomial())
+summary(in_full_model)
+
+```
+
+
+
+### model selection with new full model
+
+```{r}
+in_forward.model.AIC = stepAIC(empty_model, 
+            scope = list(lower = empty_model, upper= in_full_model),k = 2,
+            direction = "forward", trace = FALSE)
+
+in_backward.model.AIC = stepAIC(in_full_model, 
+                scope = list(lower = empty_model, upper= in_full_model), 
+                k = 2,direction = "backward",trace = FALSE)
+
+in_both.model.AIC = stepAIC(in_full_model,
+      scope = list(lower = empty_model, upper= in_full_model), 
+      k = 2,direction = "both",trace = FALSE)
+
+summary(in_forward.model.AIC)
+summary(in_backward.model.AIC)
+summary(in_both.model.AIC)
+
+in_forward.model.AIC$aic
+in_backward.model.AIC$aic
+in_both.model.AIC$aic
+```
+##  "Workspace + Smoking + Employment +  Workspace:Smoking" has the lower AIC which is 1200.771
+
+
+
+
+###BIC
+```{r}
+in_forward.model.BIC = stepAIC(empty_model, 
+                          scope = list(lower = empty_model, upper= in_full_model),
+                         k = log(n_new),direction = "forward", trace = FALSE)
+
+in_backward.model.BIC = stepAIC(in_full_model, scope = list(lower = empty_model, 
+    upper= in_full_model), k = log(n_new),direction = "backward",trace = FALSE)
+
+in_both.model.BIC = stepAIC(in_full_model, scope = list(lower = empty_model,
+      upper= in_full_model), k = log(n_new),direction = "both",trace = FALSE)
+
+summary(in_forward.model.BIC)
+summary(in_backward.model.BIC)
+summary(in_both.model.BIC)
+
+in_forward.model.BIC$aic
+in_backward.model.BIC$aic
+in_both.model.BIC$aic
+
+
+anova(in_forward.model.AIC, in_backward.model.AIC,in_both.model.AIC )
+anova(in_forward.model.BIC,in_backward.model.BIC,in_both.model.BIC )
+```
+
+
+###### deviance plot
+
+```{r}
+
+BIC_choice = glm(formula = longByss$Byss ~ Smoking + Workspace, family = binomial(), 
+    data = longByss)
+
+AIC_choice = glm(formula = longByss$Byss ~ Workspace + Smoking + Employment + 
+    Workspace:Smoking, family = binomial(), data = longByss)
+
+
+library(ggplot2)
+deviance_values <- c(deviance(AIC_choice), deviance(BIC_choice))
+model_names <- c("AIC_choice", "BIC_choice")
+
+plot_data <- data.frame(Model = model_names, Deviance = deviance_values)
+
+ggplot(plot_data, aes(x = Model, y = Deviance)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  theme_minimal() +
+  labs(title = "Model Comparison by Deviance", x = "Model", y = "Deviance")
+
+```
+
+```{r, ref.label=knitr::all_labels(), eval = F, echo = T}
+
+```
+
+

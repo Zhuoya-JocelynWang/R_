@@ -1,0 +1,152 @@
+---
+title: "Final 137"
+output: pdf_document
+date: "2023-03-14"
+---
+```{r}
+library(MASS)
+library(forecast)
+###### raw data #####
+load("~/Desktop/137 Final/finalproject.Rdata")
+data <- finalPro_data[c(3,8)]
+data <- ts(data$Exports, start = 1960, end = 2017, frequency = 1)
+
+plot.ts(data, type="o",main = "Original Data", ylab = "CAR Exports")
+### Non-stationary 
+#acf(data, main=" ACF of Original data")
+#pacf(data, main = "PACF of Original Data")
+```
+
+
+```{r}
+#### Difference MA3, AR2#########
+plot.ts(diff(data), type="o",main = "Difference", ylab = "CAR Exports")
+acf(diff(data))
+pacf(diff(data))
+
+sarima(diff(data),0,0,3)
+sarima(diff(data),2,0,0)
+
+```
+
+### Log 
+```{r}
+log.exports = log(data)
+plot.ts (log.exports) ## similar 
+acf(log.exports)
+pacf(log.exports)
+```
+#### Log.Difference MA3, AR2#########
+```{r}
+log.diff = diff(log.exports)
+plot.ts(log.diff,main = "Log Difference", ylab = "CAR Exports")
+acf(log.diff)
+pacf(log.diff)
+sarima(log.diff, 0,0,3)
+sarima(log.diff, 2,0,0)
+
+```
+
+```{r}
+#library(forecast)
+#Log.diff.200 = arima(log.diff,order=c(2,0,0))
+#fore = forecast(Log.diff.200,level =c(80,95), h = 10)
+#autoplot(fore)
+```
+#### Boxcox Lambda = -0.37
+```{r}
+library(forecast)
+library(MASS)
+
+BoxCox.lambda(data, method = c("guerrero", "loglik"), lower = -1, upper = 2)
+#bestla = forecast::BoxCox.lambda(data)
+
+plot(data, main = 'Exports', ylab = '')
+plot.ts(diff(BoxCox(data, lambda = -0.37)))
+choice_three = diff(BoxCox(data, lambda = -0.37))
+acf(choice_three)
+pacf(choice_three)
+```
+
+#### MA(3) & AR(2) Boxcox with Lambda = -0.37
+```{r}
+sarima(choice_three, 0,0,3)
+sarima(choice_three, 2,0,0)
+```
+
+
+###### Boxcox lambda = 0.51
+```{r}
+
+x = seq(1,58)
+y = data
+
+boxcox(y~x)
+bc = boxcox(y~x)
+lambda = bc$x[which.max(bc$y)]
+lambda
+choice_three5 = diff(BoxCox(data, lambda = 0.51))
+acf(choice_three5)
+pacf(choice_three5)
+
+```
+##MA(3) & AR(2) Boxcox lambda = 0.51
+```{r}
+sarima(choice_three5, 0,0,3)
+sarima(choice_three5, 2,0,0)
+```
+
+
+
+
+```{r}
+library(forecast)
+
+inv_diff = diffinv(choice_three) 
+
+choice_three200 = arima(choice_three,order=c(2,0,0))
+fore = forecast(arima(choice_three,order=c(2,0,0)),level =c(80,95), h=6)
+autoplot(fore)
+
+#InvBoxCox(, lambda = -0.37, biasadj = FALSE, fvar = NULL)
+
+#fo = predict(ar.ols(data, order =1, demean = FALSE, intercept = TRUE), n.head = 8)
+```
+
+
+
+```{r}
+data = choice_three
+regr = ar.ols(x = choice_three, order.max = 2, demean = FALSE, intercept = TRUE)
+forec = predict(regr, n.head = 6)
+
+-0.005887772 - 1.645*0.03877459
+-0.005887772 + 1.645*0.03877459
+```
+
+
+```{r}
+library(MASS)
+f2018 <- 12.51809-0.005532895
+f2019 <- f2018-0.002786388
+f2020 <- f2019-0.004083827	
+f2021 <- f2020-0.004457743	
+
+f2022 <- f2021-0.003925768
+f2023 <- f2022-0.004002814
+
+f <- c(f2018, f2019, f2020, f2021, f2022, f2023)
+
+
+bestla = forecast::BoxCox.lambda(data)
+
+#inb = InvBoxCox(f,lambda = -0.37, biasadj = FALSE, fvar = NULL)
+
+inbc = InvBoxCox(f,lambda = 0.37)
+
+y1 = forecast::BoxCox(data, lambda = bestla)
+
+inb = forecast::InvBoxCox(f, lambda = bestla)
+
+```
+

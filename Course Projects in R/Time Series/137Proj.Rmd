@@ -1,0 +1,137 @@
+---
+title: "137 Final Project"
+author: "Qianhui Ma;Zhuoya Wang; Tianyu Lin"
+date: "2023-03-14"
+output: html_document
+---
+
+```{r}
+library(astsa)
+library(forecast)
+library(MASS)
+```
+
+```{r}
+load("finalproject.Rdata")
+
+data <- finalPro_data
+data <- ts(finalPro_data$Exports, start = 1960, end=2017, frequency = 1)
+```
+
+## raw data
+```{r}
+ts.plot(data, main="Raw Data", ylab="CAR Export", xlab="Year", col=4)
+#acf2(data, lag(50), main="ACF and PACF for raw data")
+```
+
+## Transformation #1: difference
+```{r}
+# ACF and PACF plots
+diff.data = diff(data)
+ts.plot(diff.data, main="First Difference Transformation", ylab="CAR Export by fitst difference", xlab="Year", col="dark blue")
+acf2(diff.data, lag(25), main="ACF and PACF for CAR export with first difference transformation",col="dark red")
+
+# AIC and BIC
+sarima(diff.data, 0,0,3)
+sarima(diff.data, 2,0,0)
+```
+
+## log transformation 
+```{r}
+log.data=log(data)
+ts.plot(log.data, main="Logarithm Transformation", ylab="CAR Export by log transformation", xlab="Year",col="dark blue")
+```
+
+## Transformation #2: log difference 
+```{r}
+# ACF and PACF plots
+log.diff=diff(log(data))
+ts.plot(log.diff, main="Log Difference Transformation", ylab="CAR Export by log difference", xlab="Year",col="dark blue")
+acf2(log.diff, lag(25), main="ACF and PACF for CAR export with log difference transformation", col="dark red")
+
+# AIC and BIC
+sarima(log.diff, 0,0,3)
+sarima(log.diff, 2,0,0)
+```
+
+## Transformation #3: BoxCox transformation using MLE
+```{r}
+x=seq(1, 58)
+y=data
+boxcox(y~x)
+bc=boxcox(y~x)
+lambda=bc$x[which.max(bc$y)]
+
+lambda_one = diff(BoxCox(data, lambda = 0.51))
+plot.ts(lambda_one, main="BoxCox Transformation, lambda=0.51", ylab="CAR Export by BoxCox transformation",xlab="Year", col="dark blue")
+acf2(lambda_one, lag(25), main="ACF and PACF for CAR export with BoxCox transformation, lambda=0.51", col="dark red")
+
+# AIC and BIC
+sarima(lambda_one, 0,0,3)
+sarima(lambda_one, 2,0,0)
+```
+
+## MA(3)
+```{r}
+ma3=arima(log.diff,order=c(0,0,3))
+ma3
+sarima(log.diff, 0,0,3, col="dark red")
+```
+
+## AR(2)
+```{r}
+ar2=arima(log.diff,order=c(2,0,0))
+ar2
+sarima(log.diff, 2,0,0, col="dark red")
+```
+
+## Forecast using AR(2) model with log difference transformation
+```{r}
+forecast_log.diff <- forecast(ar2, level=c(80,95), h=7)
+autoplot(forecast(ar2, h=7), xlab="Year",, ylab="log difference",main="Forecasts form AR(2)")
+```
+
+```{r}
+# convert back a log difference transformed data 
+# step 1: convert back difference (ie. log2018 = point forecast + log2017)
+log2018 <- 2.527175-0.016105209	
+log2019 <- log2018-0.008467328
+log2020 <- log2019-0.011733554	
+log2021 <- log2020-0.012735173	
+log2022 <- log2021-0.011339047
+log2023 <- log2022-0.011598225
+log2024 <- log2023-0.011917643
+logdata <- c(log2018, log2019, log2020, log2021, log2022, log2023, log2024)
+
+# step 2 convert back log using exp
+forecast_log.diff_data <- exp(logdata)
+forecast_log.diff_data <- c(data,forecast_log.diff_data)
+forecast_log.diff_data <- ts(forecast_log.diff_data, start = 1960, end = 2024, frequency = 1)
+
+# compare forecast data with raw data
+par(mfrow=c(2,1))
+ts.plot(data, main="Raw Data", ylab="CAR Export", xlab="Year", col=4)
+plot.ts(forecast_log.diff_data, main="Forecast data", ylab="CAR Export", xlab="Year", col="dark green")
+```
+
+## Plot the trend of other variables
+```{r}
+par(mfrow=c(3,2))
+plot.ts(finalPro_data$Imports, main="Import")
+plot.ts(finalPro_data$Exports, main="Exports")
+plot.ts(finalPro_data$GDP, main="GDP")
+plot.ts(finalPro_data$CPI, main="CPI")
+plot.ts(finalPro_data$Growth, main="Growth")
+plot.ts(finalPro_data$Population, main="Population")
+```
+
+## Another method with BoxCox transformation
+```{r}
+BoxCox.lambda(y, method=c("guerrero", "loglik"), low=-1, upper=2)
+
+lambda_two = diff(BoxCox(data, lambda = -0.37))
+plot.ts(lambda_two, main="BoxCox Transformation, lambda=-0.37", ylab="CAR Export by BoxCox transformation", xlab="Year",col="dark blue")
+acf2(lambda_two, lag(25), main="ACF & PACF for CAR export with BoxCox transformation, lambda=-0.37", col="dark red")
+```
+
+
